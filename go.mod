@@ -1,4 +1,4 @@
-module Tour-Feedback
+module github.com/davelarde/Tour-Feedback
 
 go 1.20
 
