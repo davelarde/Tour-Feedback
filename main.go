@@ -10,14 +10,17 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 )
 
-var tableName = "TouristEmails"
+var (
+	dynamoDBClient *dynamodb.DynamoDB
+	tableName      = "TouristEmails"
+)
 
 type TouristEmailItem struct {
 	TourDate      string   `json:"TourDate"`
 	TouristEmails []string `json:"TouristEmails"`
 }
 
-func main() {
+func init() {
 	//initialize an aws session
 	sess, err := session.NewSession(&aws.Config{
 
@@ -28,7 +31,11 @@ func main() {
 	}
 
 	//Create a DynamoDb client
-	svc := dynamodb.New(sess)
+	dynamoDBClient = dynamodb.New(sess)
+}
+
+func main() {
+
 	// define the dynamo db table schema
 	params := &dynamodb.CreateTableInput{
 		TableName: aws.String(tableName),
