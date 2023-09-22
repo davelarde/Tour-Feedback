@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"github.com/davelarde/Tour-Feedback/dynamodbfol"
 )
 
 func main() {
@@ -25,7 +26,7 @@ func main() {
 
 	// define the dynamo db table schema
 	params := &dynamodb.CreateTableInput{
-		TableName: aws.String(dynamodb.TableName),
+		TableName: aws.String(dynamodbfol.TableName),
 		KeySchema: []*dynamodb.KeySchemaElement{
 			{
 				AttributeName: aws.String("TourDate"),
@@ -49,10 +50,10 @@ func main() {
 		log.Fatalf("Error creating table: %v", err)
 	}
 
-	fmt.Printf("Table %s created succesfully. \n", dynamodb.TableName)
+	fmt.Printf("Table %s created succesfully. \n", dynamodbfol.TableName)
 
 	//inserting dummy data to dynamodb
-	sampleData := []dynamodb.TouristEmailItem{
+	sampleData := []dynamodbfol.TouristEmailItem{
 		{
 			TourDate: "2023-09-01",
 			TouristEmails: []string{
@@ -80,7 +81,7 @@ func main() {
 		}
 
 		_, err = svc.PutItem(&dynamodb.PutItemInput{
-			TableName: aws.String(dynamodb.TableName),
+			TableName: aws.String(dynamodbfol.TableName),
 			Item:      av,
 		})
 		if err != nil {
