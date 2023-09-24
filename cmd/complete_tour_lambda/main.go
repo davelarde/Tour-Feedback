@@ -7,39 +7,25 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/lambda"
+	"github.com/davelarde/Tour-Feedback/dynamodbfol"
 )
 
-var (
-	dynamoDBClient *dynamodb.DynamoDB
-	tableName      = "TouristEmails"
-)
+func main() {
+	lambda.Start(CompleteTourHandler)
 
-func init() {
-	//initialize an aws session
-	sess, err := session.NewSession(&aws.Config{
-
-		Region: aws.String("us-east-1"),
-	})
-	if err != nil {
-		log.Fatalf("Error creating session: %v", err)
-	}
-
-	//Create a DynamoDb client
-	dynamoDBClient = dynamodb.New(sess)
 }
 
 // this function will tell lambda if the tour was completed or not
 func CompleteTourHandler(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	tourDate := request.QueryStringParameters["tourDate"]
-	toursCompleted := request.QueryStringParameters["completed"] // this is the parameter to indicate if the tour was completed.
+	tourCompleted := request.QueryStringParameters["completed"] // this is the parameter to indicate if the tour was completed.
 
 	if tourDate == "" {
 		log.Print("tour date parameter is missing")
 		return events.APIGatewayProxyResponse{
-			statusCode: 400,
+			StatusCode: 400,
 			Body:       "Tour date parameter is missing",
 		}, nil
 	}
@@ -48,22 +34,31 @@ func CompleteTourHandler(ctx context.Context, request events.APIGatewayProxyRequ
 	if err != nil {
 		log.Print("Error updating tour status")
 		return events.APIGatewayProxyResponse{
-			statusCode: 500,
+			StatusCode: 500,
 			Body:       fmt.Sprintf("Error updating tour status %v", err),
 		}, nil
 	}
 	//if the tour is completed, optionally record the email address in dynamo db
 	if tourCompleted == "true" {
-		emailAddresses := []string{"danielavelarde4@gmail.com", "dani@dani.com", "worldtraveler@gmail.com"}
-		err := updateEmailAddresses(tourDate, emailAddresses)
+		emailAddresses := []string{"danielavelarde44@gmail.com", "dani@dani.com", "worldtraveler@gmail.com"}
+		err := dynamodbfol.UpdateEmailAddresses(tourDate, emailAddresses)
 		if err != nil {
 			log.Print("error updating email addresses")
-			return events, APIGatewayProxyResponse{
+			return events.APIGatewayProxyResponse{
 				StatusCode: 500,
 				Body:       fmt.Sprintf("error updating email addresses %v", err),
 			}, nil
 		}
+		//send survey emails to the recorded emails
+		err = sendSurveyEmail(emailAddresses)
+		if err != nil {
+			log.Print("Error sending survey emails")
+			return events.APIGatewayProxyResponse{
+				StatusCode: 500,
+				Body:       fmt.Sprintf("Error sending survey emails %v", err),
+			}, nil
 
+		}
 	}
 	log.Print("Tour Status updated successfully")
 	return events.APIGatewayProxyResponse{
@@ -72,9 +67,9 @@ func CompleteTourHandler(ctx context.Context, request events.APIGatewayProxyRequ
 	}, nil
 }
 
-func updateTourStatus(TourDate string, tourCompleted string) error {
-	_, err := dynamoDBClient.UpdateItem(&dynamodb.UpdateItemInput{
-		TableName: aws.String(tableName),
+func updateTourStatus(tourDate string, tourCompleted string) error {
+	_, err := dynamodbfol.DynamoDBClient.UpdateItem(&dynamodb.UpdateItemInput{
+		TableName: aws.String(dynamodbfol.TableName),
 		Key: map[string]*dynamodb.AttributeValue{
 			"TourDate": {
 				S: aws.String(tourDate),
@@ -92,31 +87,4 @@ func updateTourStatus(TourDate string, tourCompleted string) error {
 		return err
 	}
 	return nil
-}
-
-func updateEmailAddresses(tourDate string, emailAddresses []string) error {
-	_, err := dynamoDBClient.UpdateItem(&dynamodb.UpdateItemInput{
-		TableName: aws.String(tableName),
-		Key: map[string]*dynamodb.AttributeValue{
-			"TourDate": {
-				S: aws.String(tourDate),
-			},
-		},
-		UpdateExpression: aws.String("SET TouristEmails = list_append(TouristEmails, :emails)"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":emails": {
-				SS: aws.StringSlice(emailAddresses),
-			},
-		},
-	})
-	if err != nil {
-		log.Print(err)
-		return err
-	}
-	return nil
-}
-
-func main() {
-	lambda.Start(CompleteTourHandler)
-
 }
