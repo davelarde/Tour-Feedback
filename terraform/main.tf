@@ -3,16 +3,6 @@ provider "aws" {
   
 }
 //create an Iam role for the lambda function
-//create lambda func
-resource "aws_lambda_function" "complete_tour_lambda" {
-    function_name = "completeTourLambda"
-    runtime = "go1.x"
-    handler = "CompleteTourHandler"
-    role = aws_iam_role.lambda_role.arn
-    filename = "../cmd/complete_tour_lambda/main.zip"
-    source_code_hash = filebase64sha256("../cmd/complete_tour_lambda/main.zip")
-  
-}
 resource "aws_iam_role" "lambda_role" {
   name = "lambda-execution-role"
 
@@ -31,6 +21,31 @@ resource "aws_iam_role" "lambda_role" {
 
 }
 
+
+//define IAM policy for SES permissions
+resource "aws_iam_policy" "ses_policy" {
+  name = "ses-policy"
+  description = "IAM policty for SES to send raw emails"
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+        {
+            Action = ["ses: SendRawEmail"],
+            Effect = "Allow",
+            Resource = "*",
+          
+        }
+    ]
+  })
+}
+// attach Iam policy for SES to lambda execution role 
+resource "aws_iam_role_policy_attachment" "ses_attachment" {
+    policy_arn = aws_iam_policy.ses_policy.arn
+    role = aws_iam_role.lambda_role.name
+  
+}
+//define IAM policy for lambda function permission 
 resource "aws_iam_policy" "lambda_policy" {
   name = "lambda-policy"
   description = "IAM policy for lambda function"
@@ -47,6 +62,17 @@ resource "aws_iam_policy" "lambda_policy" {
   })
 
 }
+
+//create lambda func
+resource "aws_lambda_function" "complete_tour_lambda" {
+    function_name = "completeTourLambda"
+    runtime = "go1.x"
+    handler = "main"
+    role = aws_iam_role.lambda_role.arn
+    filename = "../cmd/complete_tour_lambda/main.zip"
+    source_code_hash = filebase64sha256("../cmd/complete_tour_lambda/main.zip")
+  
+}
 // attach an aws managed policy
 resource "aws_iam_policy_attachment" "lambda_attachment" {
     name = "lambda-policy-attachment"
@@ -56,23 +82,58 @@ resource "aws_iam_policy_attachment" "lambda_attachment" {
 }
 
 
-resource "aws_dynamodb_table" "tourist_emails" {
-  name = "TouristEmails"
-  billing_mode = "PROVISIONED"
-  read_capacity = 1
-  write_capacity = 1
- 
-  attribute {
-    name = "TourDate"
-    type = "S" 
-  }
-  hash_key = "TourDate"
+
+//create api gateway
+resource "aws_api_gateway_rest_api" "complete_tour_api" {
+    name = "complete-tour-api"
+    description = "Complete tour api"
   
 }
 
-output "table_name"{
-    value = aws_dynamodb_table.tourist_emails.name
+resource "aws_api_gateway_resource" "complete_tour" {
+    rest_api_id = aws_api_gateway_rest_api.complete_tour_api.id
+    parent_id = aws_api_gateway_rest_api.complete_tour_api.root_resource_id
+    path_part = "completeTour"
+  
 }
+resource "aws_api_gateway_method" "complete_tour" {
+    rest_api_id = aws_api_gateway_rest_api.complete_tour_api.id
+    resource_id = aws_api_gateway_resource.complete_tour.id
+    http_method = "POST"
+    authorization = "NONE"
+  
+}
+
+resource "aws_api_gateway_integration" "complete_tour" {
+  rest_api_id = aws_api_gateway_rest_api.complete_tour_api.id
+  resource_id = aws_api_gateway_resource.complete_tour.id
+  http_method = aws_api_gateway_method.complete_tour.http_method
+  integration_http_method = "POST"
+  type = "AWS_PROXY"
+  uri = aws_lambda_function.complete_tour_lambda.invoke_arn
+}
+
+resource "aws_lambda_permission" "complete_tour" {
+  statement_id = "AllowCompleteTourInvoke"
+  action = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.complete_tour_lambda.function_name
+  principal = "apigateway.amazonaws.com"
+}
+
+//deploy the api on stage
+resource "aws_api_gateway_deployment" "complete_tour" {
+  depends_on = [ aws_api_gateway_integration.complete_tour ]
+  rest_api_id = aws_api_gateway_rest_api.complete_tour_api.id
+  stage_name = "prod"
+}
+
+
+
+output "complete_tour_api_endpoint_url" {
+  value = aws_api_gateway_deployment.complete_tour.invoke_url
+}
+
+
 
 output "lambda_function_arn" {
   value = aws_lambda_function.complete_tour_lambda.arn

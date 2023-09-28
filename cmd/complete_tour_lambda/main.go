@@ -6,11 +6,17 @@ import (
 	"log"
 
 	"github.com/aws/aws-lambda-go/events"
+	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/lambda"
-	"github.com/davelarde/Tour-Feedback/dynamodbfol"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/ses"
+	// "github.com/aws/aws-sdk-go/service/lambda"
 )
+
+var dummyData = map[string][]string{
+	"2023-09-01": {"danielavelarde4@gmail.com", "dan@dani.com", "serge@worldtraveller.com"},
+	"2023-09-02": {"danielavelarde4@gmail.com", "tourist2@dani.com", "tourist3@worldtraveller.com"},
+}
 
 func main() {
 	lambda.Start(CompleteTourHandler)
@@ -19,6 +25,7 @@ func main() {
 
 // this function will tell lambda if the tour was completed or not
 func CompleteTourHandler(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+
 	tourDate := request.QueryStringParameters["tourDate"]
 	tourCompleted := request.QueryStringParameters["completed"] // this is the parameter to indicate if the tour was completed.
 
@@ -29,62 +36,73 @@ func CompleteTourHandler(ctx context.Context, request events.APIGatewayProxyRequ
 			Body:       "Tour date parameter is missing",
 		}, nil
 	}
-	//update tour status in dynamoDb
-	err := updateTourStatus(tourDate, tourCompleted)
-	if err != nil {
-		log.Print("Error updating tour status")
+	//check if tour date exists in the dummy data
+	touristEmails, ok := dummyData[tourDate]
+	if !ok {
+		log.Print("Tour date not found")
 		return events.APIGatewayProxyResponse{
-			StatusCode: 500,
-			Body:       fmt.Sprintf("Error updating tour status %v", err),
+			StatusCode: 404,
+			Body:       "Tour date not found",
 		}, nil
 	}
+
+	log.Printf("Tour status for %s updated succesfully", tourDate)
 	//if the tour is completed, optionally record the email address in dynamo db
 	if tourCompleted == "true" {
-		emailAddresses := []string{"danielavelarde44@gmail.com", "dani@dani.com", "worldtraveler@gmail.com"}
-		err := dynamodbfol.UpdateEmailAddresses(tourDate, emailAddresses)
+		err := SendSurveyEmail(touristEmails)
 		if err != nil {
-			log.Print("error updating email addresses")
+			log.Printf("error sending survey emails")
 			return events.APIGatewayProxyResponse{
 				StatusCode: 500,
-				Body:       fmt.Sprintf("error updating email addresses %v", err),
+				Body:       fmt.Sprintf("error sending survey email %v", err),
 			}, nil
-		}
-		//send survey emails to the recorded emails
-		err = sendSurveyEmail(emailAddresses)
-		if err != nil {
-			log.Print("Error sending survey emails")
-			return events.APIGatewayProxyResponse{
-				StatusCode: 500,
-				Body:       fmt.Sprintf("Error sending survey emails %v", err),
-			}, nil
-
 		}
 	}
-	log.Print("Tour Status updated successfully")
+
+	log.Print("Tour status updated succesfully")
 	return events.APIGatewayProxyResponse{
 		StatusCode: 200,
-		Body:       "Tour status updated successfully",
+		Body:       "Tour status updated succesfully",
 	}, nil
+
 }
 
-func updateTourStatus(tourDate string, tourCompleted string) error {
-	_, err := dynamodbfol.DynamoDBClient.UpdateItem(&dynamodb.UpdateItemInput{
-		TableName: aws.String(dynamodbfol.TableName),
-		Key: map[string]*dynamodb.AttributeValue{
-			"TourDate": {
-				S: aws.String(tourDate),
-			},
-		},
-		UpdateExpression: aws.String("SET TourStatus = :status"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":status": {
-				S: aws.String(tourCompleted),
-			},
-		},
+func SendSurveyEmail(emailAddresses []string) error {
+	sess, err := session.NewSession(&aws.Config{
+		Region: aws.String("us-east-1"),
 	})
 	if err != nil {
-		log.Print(err)
-		return err
+		log.Fatalf("error creating session")
+	}
+
+	svc := ses.New(sess)
+
+	subject := "Tour Survey"
+	body := "hello please take our tour survey"
+
+	for _, emailAddress := range emailAddresses {
+		input := &ses.SendEmailInput{
+			Destination: &ses.Destination{
+				ToAddresses: []*string{aws.String(emailAddress)},
+			},
+			Message: &ses.Message{
+				Body: &ses.Body{
+					Text: &ses.Content{
+						Data: aws.String(body),
+					},
+				},
+				Subject: &ses.Content{
+					Data: aws.String(subject),
+				},
+			},
+			Source: aws.String("danielavelarde4@gmail.com"),
+		}
+		// send email
+		_, err := svc.SendEmail(input)
+		if err != nil {
+			log.Printf("Error sending email to %s: %v", emailAddress, err)
+			return err
+		}
 	}
 	return nil
 }
