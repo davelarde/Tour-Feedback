@@ -31,7 +31,9 @@ resource "aws_iam_policy" "ses_policy" {
     Version = "2012-10-17",
     Statement = [
         {
-            Action = ["ses: SendRawEmail"],
+            Action = [
+            "ses: SendRawEmail", 
+            "ses:SendEmail"],
             Effect = "Allow",
             Resource = "*",
           
@@ -69,8 +71,8 @@ resource "aws_lambda_function" "complete_tour_lambda" {
     runtime = "go1.x"
     handler = "main"
     role = aws_iam_role.lambda_role.arn
-    filename = "../cmd/complete_tour_lambda/main.zip"
-    source_code_hash = filebase64sha256("../cmd/complete_tour_lambda/main.zip")
+    filename = "../cmd/main.zip"
+    source_code_hash = filebase64sha256("../cmd/main.zip")
   
 }
 // attach an aws managed policy
